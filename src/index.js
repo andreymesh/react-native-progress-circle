@@ -1,13 +1,6 @@
-import React from 'react'
-import {
-  Easing,
-  Animated,
-  StyleSheet,
-  Text,
-  View,
-  ViewPropTypes,
-} from 'react-native'
+import React, {Component} from 'react'
 import PropTypes from 'prop-types'
+import {StyleSheet, View, ViewPropTypes} from 'react-native'
 
 // compatability for react-native versions < 0.44
 const ViewPropTypesStyle = ViewPropTypes
@@ -18,13 +11,11 @@ const styles = StyleSheet.create({
   outerCircle: {
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#e3e3e3',
   },
   innerCircle: {
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
   },
   leftWrap: {
     position: 'absolute',
@@ -37,66 +28,23 @@ const styles = StyleSheet.create({
     left: 0,
     borderTopRightRadius: 0,
     borderBottomRightRadius: 0,
-    backgroundColor: '#f00',
   },
 })
 
-function calcInterpolationValuesForHalfCircle1(animatedValue, {shadowColor}) {
-  const rotate = animatedValue.interpolate({
-    inputRange: [0, 50, 50, 100, 200],
-    outputRange: ['0deg', '180deg', '180deg', '180deg', '540deg'],
-  });
-
-  const backgroundColor = shadowColor;
-  return {rotate, backgroundColor}
+function percentToDegrees(percent) {
+  return percent * 3.6
 }
 
-function calcInterpolationValuesForHalfCircle2(animatedValue,
-                                               {color, shadowColor},) {
-  const rotate = animatedValue.interpolate({
-    inputRange: [0, 50, 50, 100, 150, 150, 200],
-    outputRange: ['0deg', '0deg', '180deg', '360deg', '360deg', '180deg', '180deg'],
-  });
-
-  const backgroundColor = animatedValue.interpolate({
-    inputRange: [0, 50, 50, 100, 150, 150, 200],
-    outputRange: [color, color, shadowColor, shadowColor, shadowColor, color, color],
-  });
-  return {rotate, backgroundColor}
-}
-
-function getInitialState(props) {
-  const circleProgress = new Animated.Value(0);
-  return {
-    circleProgress,
-    secondsElapsed: 0,
-    text: props.updateText(0, props.seconds),
-    interpolationValuesHalfCircle1: calcInterpolationValuesForHalfCircle1(
-      circleProgress,
-      props,
-    ),
-    interpolationValuesHalfCircle2: calcInterpolationValuesForHalfCircle2(
-      circleProgress,
-      props,
-    ),
-  }
-}
-
-export default class PercentageCircle extends React.PureComponent {
+export default class PercentageCircle extends Component {
   static propTypes = {
-    seconds: PropTypes.number,
-    incrementTime: PropTypes.number.isRequired,
-    decrementTime: PropTypes.number.isRequired,
-    stop: PropTypes.bool.isRequired,
-    radius: PropTypes.number.isRequired,
     color: PropTypes.string,
-    shadowColor: PropTypes.string, // eslint-disable-line react/no-unused-prop-types
+    shadowColor: PropTypes.string,
     bgColor: PropTypes.string,
+    radius: PropTypes.number.isRequired,
     borderWidth: PropTypes.number,
+    percent: PropTypes.number.isRequired, // eslint-disable-line react/no-unused-prop-types
+    children: PropTypes.node,
     containerStyle: ViewPropTypesStyle,
-    textStyle: Text.propTypes.style,
-    updateText: PropTypes.func,
-    onTimeElapsed: PropTypes.func,
   };
 
   static defaultProps = {
@@ -104,61 +52,47 @@ export default class PercentageCircle extends React.PureComponent {
     shadowColor: '#999',
     bgColor: '#e9e9ef',
     borderWidth: 2,
-    seconds: 10,
     children: null,
     containerStyle: null,
-    textStyle: null,
-    onTimeElapsed: () => null,
-    updateText: (elapsedSeconds, totalSeconds) =>
-      (totalSeconds - elapsedSeconds).toString(),
   };
 
   constructor(props) {
-    super(props);
-    this.state = getInitialState(props);
-    this.restartAnimation({finished: true});
+    super(props)
+    this.state = this.getInitialStateFromProps(props)
   }
 
-  componentDidUpdate(prevProps) {
-    if (prevProps.stop && !this.props.stop) {
-      this.setState({...getInitialState(this.props)}, () => this.restartAnimation({finished: true}));
+  componentWillReceiveProps(nextProps) {
+    this.setState(this.getInitialStateFromProps(nextProps))
+  }
+
+  getInitialStateFromProps(props) {
+    const percent = Math.max(Math.min(100, props.percent), 0)
+    const needHalfCircle2 = percent > 50
+    let halfCircle1Degree
+    let halfCircle2Degree
+    // degrees indicate the 'end' of the half circle, i.e. they span (degree - 180, degree)
+    if (needHalfCircle2) {
+      halfCircle1Degree = 180
+      halfCircle2Degree = percentToDegrees(percent)
+    } else {
+      halfCircle1Degree = percentToDegrees(percent)
+      halfCircle2Degree = 0
     }
-    else if (!prevProps.stop && this.props.stop) {
-      this.state.circleProgress.stopAnimation();
-      this.setState({...getInitialState(this.props)})
+    return {
+      halfCircle1Degree,
+      halfCircle2Degree,
+      halfCircle2Styles: {
+        // when the second half circle is not needed, we need it to cover
+        // the negative degrees of the first circle
+        // backgroundColor: needHalfCircle2
+        //   ? this.props.color
+        //   : this.props.shadowColor,
+      },
     }
   }
 
-  restartAnimation = (data) => {
-    console.log('restartAnimation before if');
-    console.log(!this.props.stop);
-    console.log(data);
-    this.state.circleProgress.setValue(0);
-    if (!this.props.stop && data.finished) {
-      console.log('restartAnimation');
-      Animated.timing(this.state.circleProgress, {
-        toValue: 100,
-        duration: this.props.incrementTime,
-        easing: Easing.linear,
-      }).start(this.downAnimation)
-    }
-  };
-
-  downAnimation = (data) => {
-    console.log('downAnimation', data);
-    if (!this.props.stop && data.finished) {
-      console.log('downAnimation');
-      Animated.timing(this.state.circleProgress, {
-        toValue: 200,
-        duration: this.props.decrementTime,
-        easing: Easing.linear,
-      }).start(this.restartAnimation)
-    }
-  };
-
-  renderHalfCircle({rotate, backgroundColor}) {
-    const {radius} = this.props;
-
+  renderHalfCircle(rotateDegrees, halfCircleStyles, second) {
+    const {radius, color, percent, shadowColor} = this.props
     return (
       <View
         style={[
@@ -169,19 +103,20 @@ export default class PercentageCircle extends React.PureComponent {
           },
         ]}
       >
-        <Animated.View
+        <View
           style={[
             styles.halfCircle,
             {
               width: radius,
               height: radius * 2,
               borderRadius: radius,
-              backgroundColor,
               transform: [
                 {translateX: radius / 2},
-                {rotate},
+                {rotate: `${rotateDegrees}deg`},
                 {translateX: -radius / 2},
               ],
+              backgroundColor: second ? (Math.max(Math.min(100, percent), 0) > 50 ? color : shadowColor) : color,
+              ...halfCircleStyles,
             },
           ]}
         />
@@ -211,8 +146,9 @@ export default class PercentageCircle extends React.PureComponent {
 
   render() {
     const {
-      interpolationValuesHalfCircle1,
-      interpolationValuesHalfCircle2,
+      halfCircle1Degree,
+      halfCircle2Degree,
+      halfCircle2Styles,
     } = this.state
     return (
       <View
@@ -222,12 +158,12 @@ export default class PercentageCircle extends React.PureComponent {
             width: this.props.radius * 2,
             height: this.props.radius * 2,
             borderRadius: this.props.radius,
-            backgroundColor: this.props.color,
+            backgroundColor: this.props.shadowColor,
           },
         ]}
       >
-        {this.renderHalfCircle(interpolationValuesHalfCircle1)}
-        {this.renderHalfCircle(interpolationValuesHalfCircle2)}
+        {this.renderHalfCircle(halfCircle1Degree)}
+        {this.renderHalfCircle(halfCircle2Degree, halfCircle2Styles, true)}
         {this.renderInnerCircle()}
       </View>
     )
